@@ -1,479 +1,533 @@
-# CATvsDOGvsNOT
-CAT/DOG/NOT 이미지 분류 및 난이도별 XAI 진단 프로젝트
+# CAT vs DOG vs NOT 
+### 분류 난이도별 XAI & 정량 평가 지표 기반 성능 개선 전략 실험
 
-
-# CAT / DOG / NOT 이미지 분류 및 난이도별 XAI 진단 프로젝트
-
-> 전이학습(Transfer Learning) 기반 이미지 분류 모델을 구축하고, 난이도별(Easy / Mid / Hard)로 세분화된 `NOT` 클래스에 대해 5가지 XAI(설명가능 AI) 기법으로 모델의 판단 근거를 진단·개선한 프로젝트입니다.
-> BEFORE(베이스라인) → AFTER(개선) 두 단계로 실험을 구성하여, **정량적 성능 개선**과 **XAI 기반 정성적 원인 분석**을 함께 제공합니다.
+> 동일한 3-클래스(cat / dog / not) 이미지 분류 문제라도 **난이도(EASY / MID / HARD)에 따라 모델이 실패하는 방식이 다르며, 따라서 최적의 성능 개선 전략도 달라야 한다**는 가설을 XAI(설명가능AI) 5종 기법과 정량 평가 지표로 검증한 프로젝트입니다.
 
 ---
 
 ## 목차
+
 1. [프로젝트 개요](#1-프로젝트-개요)
 2. [시스템 아키텍처](#2-시스템-아키텍처)
 3. [데이터 출처 및 전처리](#3-데이터-출처-및-전처리)
-4. [핵심 구현 및 최적화](#4-핵심-구현-및-최적화)
+4. [핵심 구현 및 최적화](#4-핵심-구현-및-최적화--before--after-난이도별-전략)
 5. [기술 스택](#5-기술-스택)
 6. [설치 및 실행 방법](#6-설치-및-실행-방법)
 7. [폴더 구조](#7-폴더-구조)
 8. [주요 트러블슈팅](#8-주요-트러블슈팅)
 9. [결과 해석](#9-결과-해석)
-10. [최종 회고 및 성찰](#10-최종-회고-및-성찰)
-11. [향후 발전 계획](#11-향후-발전-계획)
+10. [결과 및 그래프](#10-결과-및-그래프)
+11. [최종 회고 및 성찰](#11-최종-회고-및-성찰)
+12. [향후 발전 계획](#12-향후-발전-계획)
 
 ---
 
 ## 1. 프로젝트 개요
 
-### 1-1. 배경 및 목표
-딥러닝 기반 이미지 분류기는 학습 데이터의 구성(클래스 불균형, 클래스 간 시각적 유사도)에 따라 성능 편차가 크게 발생하며, **"왜 틀렸는가"** 에 대한 답은 Accuracy나 Confusion Matrix만으로는 알기 어렵습니다. 본 프로젝트는 이러한 문제의식에서 출발하여 다음 두 가지를 목표로 설계되었습니다.
+### 1.1 배경 및 가설
 
-1. **난이도 기반 벤치마크 설계**: `cat`, `dog` 이미지와 시각적 유사도가 다른 세 종류의 `NOT` 데이터셋(`easy` / `mid` / `hard`)을 구성하여, 동일한 모델이 배경/오브젝트 난이도에 따라 어떻게 성능이 달라지는지 체계적으로 검증
-2. **XAI 기반 원인 진단 → 개선 → 재검증 루프**: Grad-CAM 계열 기법과 LIME, Occlusion Sensitivity를 종합 적용하여 오분류 원인을 시각적으로 진단하고, 이를 근거로 학습 전략을 개선한 뒤 **BEFORE / AFTER 정량 비교**로 개선 효과를 검증
+이미지 분류 프로젝트에서 흔히 "정확도를 올리려면 더 큰 모델, 더 센 증강을 쓰면 된다"는 식의 일괄적인 처방이 적용되곤 합니다. 이 프로젝트는 그 가정에 의문을 던지는 것에서 출발했습니다.
 
-### 1-2. 프로젝트 구성
-본 리포지토리는 하나의 실험을 두 단계로 나누어 제공합니다.
+> **핵심 가설**: 같은 분류 문제라도 샘플의 "분류 난이도"에 따라 모델이 겪는 실패의 원인(과적합, 표현력 부족, 배경-전경 혼동, 클래스 불균형 등)이 서로 다르며, 따라서 정량적 평가지표와 XAI 시각화 근거에 기반해 **난이도별로 차별화된 개선 전략**을 적용해야 가장 효율적인 성능 향상을 얻을 수 있다.
 
-| 단계 | 목적 | 노트북 |
-|---|---|---|
-| **BEFORE** | ResNet18 단일 백본 + 표준 증강/손실함수로 학습한 베이스라인 모델의 정량/정성 평가 | `img_cls_BEFORE.ipynb` |
-| **AFTER** | 클래스 불균형·과적합·오분류 패턴 진단 결과를 반영해 손실함수·증강·스케줄러·백본을 개선한 모델의 재평가 | `img_cls_AFTER.ipynb` |
+이를 검증하기 위해 동일한 cat/dog/not 3-클래스 데이터셋을 **EASY / MID / HARD** 세 난이도로 나누고, 하나의 공통 베이스라인(`BEFORE`)에서 출발하여 각 난이도별 실패 패턴을 5가지 XAI 기법으로 진단한 뒤, 그 근거에 따라 서로 다른 개선 전략을 적용한 `AFTER` 버전을 만들어 비교했습니다.
 
-각 노트북은 **① 모델 학습(또는 저장된 가중치 로드) → ② 정량 평가(Accuracy/F1/Confusion Matrix) → ③ 5가지 XAI 기법 시각화 → ④ 난이도별 성능/학습곡선 비교** 순서로 동일한 파이프라인을 공유하며, AFTER 노트북은 BEFORE 대비 개선 항목이 코드 주석과 마크다운 셀에 명시되어 있습니다.
+### 1.2 실험 설계 요약
 
-### 1-3. 한눈에 보는 최종 성과 (Test Accuracy 기준)
+| 단계 | 내용 |
+|---|---|
+| **BEFORE** | EASY/MID/HARD 공통으로 ResNet18 단일 아키텍처 + 동일한 학습 레시피(Adam, 기본 증강)로 베이스라인 구축 |
+| **진단** | Grad-CAM, Grad-CAM++, Score-CAM, Occlusion Sensitivity, LIME 5종 XAI + Confusion Matrix/F1로 난이도별 실패 원인 분석 |
+| **AFTER** | 진단 결과에 근거해 EASY(정규화 완화) / MID(증강 강화) / HARD(백본 교체 + 최다 정규화 기법)로 차별화된 전략 적용 |
+| **검증** | 동일한 XAI·정량 평가 파이프라인으로 BEFORE 대비 개선폭을 난이도별로 재측정 |
 
-| 난이도 | BEFORE | AFTER | 개선폭 |
-|:---:|:---:|:---:|:---:|
-| EASY | 94.01% | **95.83%** | +1.82%p |
-| MID  | 88.68% | **91.11%** | +2.43%p |
-| HARD | 82.98% | **88.17%** | **+5.19%p** |
+### 1.3 핵심 결과 미리보기
 
-가장 어려운 `HARD` 난이도에서 가장 큰 폭의 성능 개선이 이루어졌으며, 이는 XAI 진단을 통해 발견한 문제(과적합, cat↔not-hard 혼동)에 표적화된 개선을 적용한 결과입니다. 자세한 내용은 [9. 결과 해석](#9-결과-해석)을 참고하세요.
+| 난이도 | BEFORE Accuracy | AFTER Accuracy (TTA) | 개선폭 |
+|---|---|---|---|
+| EASY | 0.9401 | 0.9583 | **+1.82%p** |
+| MID | 0.8868 | 0.9111 | **+2.43%p** |
+| HARD | 0.8298 | 0.8817 | **+5.19%p** |
+
+가장 어려운 HARD 난이도에서 가장 정교한 전략을 적용했을 때 개선폭이 가장 크게 나타나, "난이도에 따라 처방이 달라야 한다"는 가설을 뒷받침하는 결과를 얻었습니다. 자세한 근거와 해석은 [4장](#4-핵심-구현-및-최적화--before--after-난이도별-전략)과 [9장](#9-결과-해석)에서 다룹니다.
 
 ---
 
 ## 2. 시스템 아키텍처
 
-### 2-1. 전체 파이프라인
+### 2.1 실행 환경
 
-```mermaid
-flowchart TD
-    A[원천 데이터<br/>CIFAR-10 / CIFAR-100] --> B[난이도별 데이터셋 구성<br/>easy / mid / hard]
-    B --> C[Dataset 저장 구조<br/>train·test × cat·dog·not-X]
-    C --> D1[BEFORE 학습 파이프라인<br/>ResNet18 + 표준 증강]
-    C --> D2[AFTER 학습 파이프라인<br/>난이도별 백본·증강·손실 최적화]
-    D1 --> E1[BEFORE 모델 가중치<br/>.pth + history.json]
-    D2 --> E2[AFTER 모델 가중치<br/>.pth + history.json]
-    E1 --> F[정량 평가<br/>Accuracy · F1 · Confusion Matrix]
-    E2 --> F
-    F --> G[5종 XAI 진단<br/>Grad-CAM · Grad-CAM++ · Score-CAM · Occlusion · LIME]
-    G --> H[오분류 패턴 분석<br/>클래스별 평균 활성화 맵]
-    H --> I[개선 전략 수립]
-    I --> D2
-    F --> J[BEFORE vs AFTER<br/>성능/학습곡선 비교 리포트]
+- **실행 플랫폼**: Google Colab (GPU 런타임)
+- **영속 저장소**: Google Drive (`/content/drive/MyDrive/CATvsDOGvsNOT/`) — 데이터셋 압축파일, 학습된 가중치(`.pth`), 학습 히스토리(`.json`)를 모두 Drive에 저장하여 Colab 세션이 끊겨도 재학습 없이 이어서 진행 가능
+- **노트북 구성**: `img_cls_BEFORE.ipynb` (베이스라인 학습 + 진단), `img_cls_AFTER.ipynb` (난이도별 개선 전략 학습 + 재진단)
+
+### 2.2 파이프라인 흐름
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ 1. 환경 준비                                                          │
+│    pip install (lime, scikit-image, opencv-python-headless, timm)   │
+│    → 한국어 폰트(NanumGothic) 설치 → Google Drive 마운트              │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 2. 데이터셋 로드                                                       │
+│    dataset.zip 압축 해제 → easy/mid/hard 각각 train/test 자동 탐색     │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 3. 모델 학습 (난이도별 반복: easy → mid → hard)                        │
+│    BEFORE: 공통 ResNet18 / AFTER: 난이도별 backbone + 전략            │
+│    best_model_{diff}.pth 존재 시 → 로드만 (재학습 스킵)                │
+│    없을 시 → 학습 후 저장 + {diff}_history.json 기록                  │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 4. run_xai_pipeline(난이도)  — 난이도별 반복 실행                       │
+│    [1] 정량 평가 (Confusion Matrix / Classification Report / TTA)    │
+│    [2] 정답 샘플 5종 XAI 비교      [3] 오답 샘플 5종 XAI 비교 (핵심)     │
+│    [4] 클래스별 정답/오답 XAI 그리드                                    │
+│    [5] 오답 샘플 앙상블 CAM 집중 분석                                   │
+│    [6] 클래스별 평균 Grad-CAM 활성화 맵                                 │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 5. 종합 비교                                                           │
+│    난이도별 성능 비교 바차트 / 학습 곡선 / BEFORE vs AFTER 델타 비교    │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2-2. 모델 아키텍처 (난이도별 백본 팩토리)
+### 2.3 모델 진단(XAI) 아키텍처
 
-`build_model(not_type)` 함수가 난이도에 따라 백본을 선택하고 분류 헤드를 재구성합니다.
-
-```mermaid
-flowchart LR
-    subgraph EASY["EASY / MID"]
-        R1[ResNet18<br/>ImageNet Pretrained] --> H1["Linear(512→256)<br/>BatchNorm1d → ReLU<br/>Dropout(0.3~0.4)<br/>Linear(256→3)"]
-    end
-    subgraph HARD["HARD (AFTER 전용)"]
-        R2[EfficientNet-B0<br/>timm, Pretrained] --> H2["Linear(1280→512)→BN→SiLU→Dropout(0.4)<br/>Linear(512→256)→BN→SiLU→Dropout(0.3)<br/>Linear(256→3)"]
-    end
-    H1 --> O1["Softmax<br/>(cat / dog / not-X)"]
-    H2 --> O2["Softmax<br/>(cat / dog / not-X)"]
-```
-
-- **BEFORE**: 모든 난이도에 **ResNet18** 단일 백본 사용
-- **AFTER**: EASY·MID는 ResNet18을 유지하되 헤드 구조를 미세 조정, **HARD는 EfficientNet-B0(timm)로 백본을 교체**하여 더 풍부한 특징 표현력을 확보 (자세한 배경은 [8. 트러블슈팅](#8-주요-트러블슈팅) 참고)
-
-### 2-3. XAI 진단 아키텍처
-
-```mermaid
-flowchart TD
-    M[학습된 모델] --> HK[Forward/Backward Hook<br/>마지막 Conv 레이어 자동 탐색]
-    HK --> GC[Grad-CAM]
-    HK --> GCPP[Grad-CAM++]
-    HK --> SC[Score-CAM]
-    M --> OCC[Occlusion Sensitivity<br/>슬라이딩 윈도우]
-    M --> LM[LIME<br/>슈퍼픽셀 기반]
-    GC --> ENS[가중 앙상블 CAM<br/>GradCAM 30% + GradCAM++ 35% + ScoreCAM 35%]
-    GCPP --> ENS
-    SC --> ENS
-    GC --> VIS[정답/오답 샘플별<br/>7단 비교 시각화]
-    GCPP --> VIS
-    SC --> VIS
-    OCC --> VIS
-    LM --> VIS
-    ENS --> GRID[클래스 × 정답/오답<br/>그리드 시각화]
-    GC --> MEAN[클래스별 평균<br/>활성화 맵]
-```
+`run_xai_pipeline` 내부에서는 hook 충돌을 방지하기 위해 **XAI 기법별로 독립된 모델 인스턴스**(`model_gc`, `model_gcpp`, `model_sc`)를 별도로 로드합니다. 하나의 모델에 Grad-CAM, Grad-CAM++, Score-CAM의 forward/backward hook을 동시에 등록하면 backward pass 과정에서 hook끼리 activation·gradient 버퍼를 덮어쓰는 간섭이 발생할 수 있기 때문입니다. (자세한 배경은 [8장 트러블슈팅](#8-주요-트러블슈팅) 참고)
 
 ---
 
 ## 3. 데이터 출처 및 전처리
 
-### 3-1. 데이터 출처
-`torchvision.datasets`에서 제공하는 **CIFAR-10**과 **CIFAR-100**을 기반으로 자체 구성하였습니다.
+### 3.1 데이터 출처 및 구조
 
-- **`cat` / `dog`**: CIFAR-10의 해당 클래스 이미지 사용
-- **`NOT` 후보군**: CIFAR-100은 `cat`/`dog` 클래스가 존재하지 않으므로, 전체 100개 클래스를 `NOT` 클래스 후보로 활용
-
-### 3-2. 난이도별 NOT 클래스 설계
-`cat`, `dog`와의 **시각적 유사도**를 기준으로 `NOT` 클래스를 3단계로 세분화하여, 모델이 어느 수준의 유사도부터 혼동을 일으키는지 정밀하게 진단할 수 있도록 설계했습니다.
-
-| 난이도 | 명칭 | 특징 | 예시 클래스 |
-|:---:|---|---|---|
-| 낮음 | `not-easy` | cat/dog와 완전히 다른 무생물·일상 사물 | bus, car, bed, cup, clock |
-| 중간 | `not-mid` | 같은 생명체 범주이나 외형이 확연히 다름 | spider, flatfish, shark, man, woman |
-| 높음 | `not-hard` | 털·체형·자세 등에서 cat/dog와 공통점이 많아 혼동 유발 | bear, wolf, tiger, lion, fox |
-
-### 3-3. 데이터셋 저장 구조
+데이터는 Google Drive의 `CATvsDOGvsNOT/dataset.zip`으로 제공되며, Colab에서 압축 해제 시 다음 구조를 가정하고 `find_dataset_root` 함수가 자동으로 루트 경로를 탐색합니다.
 
 ```
 dataset/
-├── easy/
-│   ├── train/
-│   │   ├── cat/
-│   │   ├── dog/
-│   │   └── not-easy/
-│   └── test/
-│       ├── cat/
-│       ├── dog/
-│       └── not-easy/
-├── mid/
-│   ├── train/{cat, dog, not-mid}/
-│   └── test/{cat, dog, not-mid}/
-└── hard/
-    ├── train/{cat, dog, not-hard}/
-    └── test/{cat, dog, not-hard}/
+  easy/   → train/ test/  → cat/ dog/ not-easy/
+  mid/    → train/ test/  → cat/ dog/ not-mid/
+  hard/   → train/ test/  → cat/ dog/ not-hard/
 ```
 
-이 구조 덕분에 난이도별 데이터셋을 **독립적으로 로드**하여 실험할 수 있고, 난이도에 따른 성능 차이를 직접 비교할 수 있습니다. (참고: 초기 구성 기준 EASY 테스트셋은 `cat`/`dog` 각 1,000장, `not-easy` 5,000장 규모였으며, `cat`·`dog` 대비 `NOT` 클래스가 수 배 많은 구조적 클래스 불균형이 존재합니다. 이는 이후 손실함수 설계에 직접적인 영향을 줍니다.)
+### 3.2 난이도별 데이터 규모 및 클래스 불균형
 
-### 3-4. 전처리 및 데이터 증강
+테스트셋 Confusion Matrix의 support(정답 개수 총합) 기준으로 집계한 난이도별 클래스 분포는 다음과 같습니다.
 
-`ImageFolder` + `DataLoader` 조합으로 로드하며, `train`은 80:20 비율(`val_ratio=0.2`)로 다시 분할하여 별도의 **train/val** 세트를 구성합니다. (클래스별 층화 분할로 각 클래스 비율을 유지)
+| 난이도 | cat | dog | not-* | 총합 | not 비중 |
+|---|---|---|---|---|---|
+| EASY | 1,000 | 1,000 | 5,000 | 7,000 | 71% |
+| MID | 1,000 | 1,000 | 2,700 | 4,700 | 57% |
+| HARD | 1,000 | 1,000 | 2,200 | 4,200 | 52% |
 
-**공통 검증/테스트 전처리**
-```python
-TEST_TRANSFORM = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-])
-```
+난이도가 낮을수록(EASY) "not" 클래스 비중이 커지는 불균형 구조이고, 난이도가 높을수록(HARD) 상대적으로 균형 잡힌 구조입니다. 이는 4장에서 설명할 **클래스 가중치 도입**의 배경이 됩니다.
 
-**BEFORE 학습 증강 (전 난이도 공통)**
-```python
-TRAIN_TRANSFORM_BL = transforms.Compose([
-    transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),
-    transforms.RandomHorizontalFlip(),
-    transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-])
-```
+### 3.3 난이도 정의 — 실제 샘플 관찰 근거
 
-**AFTER 학습 증강 (난이도별 강도 차등 적용)**
+`{난이도}_정답샘플*.png`, `{난이도}_오답샘플*.png` (CDN 결과 이미지) 및 학습 로그를 관찰한 결과, 세 난이도는 다음과 같은 시각적 특성 차이를 보였습니다.
 
-| 난이도 | 기본 증강 | 추가 증강 |
-|---|---|---|
-| EASY | RandomResizedCrop(scale 0.7~1.0) + HFlip + ColorJitter | RandomGrayscale(p=0.05), RandomErasing(p=0.15) |
-| MID  | 상동 | **RandAugment**(N=2, M=9), RandomErasing(p=0.25) |
-| HARD | 상동 | RandomVerticalFlip(p=0.1), **RandAugment**(N=2, M=12), RandomErasing(p=0.35) |
+- **EASY**: 피사체가 화면 중앙에 크고 선명하게 위치, 배경이 단순하거나 피사체와 뚜렷하게 구분됨. 정답 샘플의 클래스 확률이 대부분 95%+ 로 매우 확신에 찬 예측을 보임.
+- **MID**: 피사체가 풀숲·덤불 등 자연/실외 배경에 일부 섞여 있어, 배경과 전경의 색상·질감이 유사한 "위장(camouflage)"형 오답이 다수 관찰됨. 오답 샘플의 Grad-CAM 히트맵이 피사체 경계를 넘어 배경으로 새어나가는(leakage) 경향이 확인됨.
+- **HARD**: 극단적 클로즈업, 저조도, 초점 흐림, 부분 가림(occlusion) 등으로 피사체의 형태 정보 자체가 제한적. 오답 샘플에서는 활성화가 피사체가 아닌 질감/그림자 패턴에 집중되는 오귀인(misattribution)이 다수 관찰됨.
 
-난이도가 높아질수록 증강 강도(RandAugment magnitude, RandomErasing 확률)를 점진적으로 높여, 더 어려운 데이터셋일수록 모델이 다양한 변형에 강건해지도록 설계했습니다. 또한 AFTER에서는 **Test-Time Augmentation(TTA)** 전처리(원본 / 수평 플립 / 256→224 CenterCrop)를 추가로 정의하여 추론 시 3가지 뷰의 소프트맥스 평균으로 예측 안정성을 높였습니다.
+### 3.4 전처리 파이프라인
+
+- **공통 전처리**: `Resize(224, 224)` → `ToTensor` → `Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])` (ImageNet 사전학습 백본과의 통계 호환성 확보)
+- **Train/Val 분할**: `ImageFolder` 기반 클래스별 stratified 80/20 분할(`val_ratio=0.2`), `np.random.default_rng(seed=42)`로 시드 고정하여 재현성 확보
+- **BEFORE 증강**: `RandomResizedCrop(224, scale=(0.8,1.0))` + `RandomHorizontalFlip` + `ColorJitter(0.2,0.2,0.2,0.05)` — 모든 난이도 동일 적용
+- **AFTER 증강(`get_train_transform`, 난이도별 차등)**:
+
+  | 난이도 | 추가 증강 | RandomErasing |
+  |---|---|---|
+  | EASY | `RandomGrayscale(p=0.05)` | p=0.15, scale=(0.02, 0.15) |
+  | MID | `RandAugment(num_ops=2, magnitude=9)` | p=0.25, scale=(0.02, 0.20) |
+  | HARD | `RandomVerticalFlip(p=0.1)` + `RandAugment(num_ops=2, magnitude=12)` | p=0.35, scale=(0.02, 0.25) |
+
+  난이도가 높아질수록 증강 강도(magnitude, erasing 확률·면적)를 단계적으로 강화한 것이 핵심 설계입니다.
+- **클래스 가중치(`compute_class_weights`)**: AFTER부터 도입. 학습 세트의 클래스별 샘플 수 역비율로 가중치를 산출해 Loss에 반영 — BEFORE에서 세 난이도 모두 cat 클래스의 precision/recall이 가장 낮았던 문제(3.2절의 불균형 구조 참고)에 대응.
+- **TTA 전처리(AFTER, 추론 전용)**: 원본 / 수평 플립 / `Resize(256)+CenterCrop(224)` 3가지 변환에 대한 softmax 확률 평균.
 
 ---
 
-## 4. 핵심 구현 및 최적화
+## 4. 핵심 구현 및 최적화 — BEFORE → AFTER 난이도별 전략
 
-### 4-1. 손실 함수: Label Smoothing + 클래스 가중치
-`cat`/`dog` 클래스가 `NOT` 클래스 대비 수 배 적은 구조적 불균형을 해결하기 위해, 단순 `CrossEntropyLoss`(BEFORE) 대신 **Label Smoothing이 결합된 가중 손실 함수**(AFTER)를 직접 구현했습니다.
+이 프로젝트의 핵심은 "왜 이 난이도에는 이 전략을 선택했는가"입니다. 아래에서는 (1) 모든 난이도에 공통 적용된 개선, (2) EASY, (3) MID, (4) HARD 각각의 진단·전략·근거 논문·결과를 순서대로 설명합니다.
 
-```python
-class LabelSmoothingCrossEntropy(nn.Module):
-    def __init__(self, smoothing=0.1, weight=None):
-        super().__init__()
-        self.smoothing = smoothing
-        self.weight = weight
+### 4.1 공통 개선 사항 (EASY / MID / HARD 공통 적용)
 
-    def forward(self, pred, target):
-        n_classes = pred.size(1)
-        confidence = 1.0 - self.smoothing
-        smooth_val = self.smoothing / (n_classes - 1)
-        true_dist = torch.full_like(pred, smooth_val)
-        true_dist.scatter_(1, target.unsqueeze(1), confidence)
-        log_prob = F.log_softmax(pred, dim=1)
-        if self.weight is not None:
-            w = self.weight.to(pred.device)[target]
-            loss = -(true_dist * log_prob).sum(dim=1)
-            return (loss * w).mean()
-        return -(true_dist * log_prob).sum(dim=1).mean()
-```
-
-클래스 가중치는 학습 세트의 클래스 분포로부터 역비율로 자동 계산됩니다 (`compute_class_weights`). 이를 통해 소수 클래스(`cat`, `dog`)의 오분류에 더 큰 페널티를 부여합니다.
-
-### 4-2. 데이터 레벨 정규화: MixUp / CutMix
-MID·HARD 난이도에서는 배치 단위로 50% 확률로 **MixUp** 또는 **CutMix**를 적용해 결정 경계를 부드럽게 만들고 과적합을 억제했습니다.
-
-```python
-def cutmix_data(x, y, alpha=1.0):
-    lam = np.random.beta(alpha, alpha)
-    idx = torch.randperm(x.size(0), device=x.device)
-    x1, y1, x2, y2 = rand_bbox(x.size(), lam)
-    mixed_x = x.clone()
-    mixed_x[:, :, x1:x2, y1:y2] = x[idx, :, x1:x2, y1:y2]
-    lam_adj = 1 - (x2 - x1) * (y2 - y1) / (x.size(-1) * x.size(-2))
-    return mixed_x, y, y[idx], lam_adj
-```
-
-### 4-3. 최적화 전략: AdamW + Custom Cosine Warmup
-- **옵티마이저**: `Adam`(BEFORE) → `AdamW`(weight_decay=1e-2, AFTER)로 전환하여 정규화 강화
-- **스케줄러**: `ReduceLROnPlateau`(BEFORE) → 자체 구현한 `CosineWarmupScheduler`(Linear Warmup → Cosine Annealing, AFTER)로 전환
-
-```python
-class CosineWarmupScheduler:
-    def __init__(self, optimizer, warmup_epochs, total_epochs, min_lr=1e-6):
-        self.optimizer, self.warmup_epochs = optimizer, warmup_epochs
-        self.total_epochs, self.min_lr = total_epochs, min_lr
-        self.base_lrs = [pg['lr'] for pg in optimizer.param_groups]
-
-    def step(self, epoch):
-        if epoch < self.warmup_epochs:
-            scale = (epoch + 1) / self.warmup_epochs
-        else:
-            progress = (epoch - self.warmup_epochs) / (self.total_epochs - self.warmup_epochs)
-            scale = 0.5 * (1 + math.cos(math.pi * progress))
-        for pg, base in zip(self.optimizer.param_groups, self.base_lrs):
-            pg['lr'] = max(base * scale, self.min_lr)
-```
-
-- **Gradient Clipping**(`max_norm=1.0`)을 추가해 MixUp/CutMix·RandAugment로 인한 손실 스파이크 시 학습 발산을 방지했습니다.
-- **EarlyStopping**: 검증 손실 기준 patience(EASY/MID=15, HARD=20)를 적용하여 최적 시점의 가중치만 저장(`best_model_*.pth`)합니다.
-
-### 4-4. 추론 최적화: Test-Time Augmentation (TTA)
-평가 시 원본 + 수평 플립 + 256→224 CenterCrop 3가지 뷰의 소프트맥스 확률을 평균하여 최종 예측을 산출, 단일 뷰 추론 대비 예측 노이즈를 줄였습니다.
-
-### 4-5. XAI 5종 세트 직접 구현
-설명가능성 확보를 위해 5가지 기법을 라이브러리에 의존하지 않고 **직접 구현**했습니다.
-
-| 기법 | 핵심 아이디어 | 구현 포인트 |
+| 항목 | BEFORE | AFTER |
 |---|---|---|
-| **Grad-CAM** | 마지막 conv층의 그래디언트 평균을 채널별 가중치로 사용 | `register_forward_hook` + `register_full_backward_hook` |
-| **Grad-CAM++** | 픽셀별 2·3차 미분을 활용한 alpha 가중치로 다중 객체·세밀한 영역 포착 | `grads²`, `grads³` 기반 alpha 계산 |
-| **Score-CAM** | 그래디언트 없이 활성화 채널을 마스크로 사용해 실제 예측 점수 변화로 중요도 산출 | 상위 top-k(20) 채널만 사용해 연산량 절감 |
-| **Occlusion Sensitivity** | 슬라이딩 윈도우(32px, stride 16)로 이미지를 가리며 예측 확률 변화 측정 | 모델 구조에 무관한 model-agnostic 검증 수단 |
-| **LIME** | 슈퍼픽셀 분할 후 로컬 선형 근사로 중요 영역 탐색 | `lime_image.LimeImageExplainer` 활용 |
+| Optimizer | Adam (lr=1e-4, wd=1e-4) | AdamW (wd=1e-2) |
+| Scheduler | ReduceLROnPlateau | Linear Warmup + CosineAnnealing |
+| Loss | CrossEntropyLoss | Label Smoothing CE + 클래스 가중치 |
+| Gradient Clipping | 없음 | max_norm=1.0 |
+| 평가 | 표준 평가만 | 표준 평가 + TTA(3-view) |
 
-또한 **Grad-CAM(30%) + Grad-CAM++(35%) + Score-CAM(35%) 가중 앙상블 CAM**을 추가로 구현하여 단일 기법의 노이즈를 상호 보완했습니다. 백본이 ResNet18/EfficientNet-B0로 달라져도 동작하도록 마지막 conv 레이어를 자동 탐색하는 헬퍼(`_get_last_conv`)를 별도로 구현했습니다.
+- **AdamW (weight decay 분리)** — Loshchilov & Hutter, *"Decoupled Weight Decay Regularization"*, arXiv:[1711.05101](https://arxiv.org/abs/1711.05101). 이 논문은 Adam의 L2 정규화 항이 실제로는 SGD에서와 같은 weight decay 효과를 내지 못한다는 점을 지적하고, 그래디언트 업데이트와 weight decay를 분리(decouple)한 AdamW를 제안합니다. BEFORE 학습 곡선(`BEFORE_CURVE.png`)에서 확인된 train/val loss 격차(과적합)를 줄이기 위해 weight_decay를 1e-4→1e-2로 100배 강화하며 AdamW로 전환했습니다.
+- **Linear Warmup + Cosine Annealing** — Loshchilov & Hutter, *"SGDR: Stochastic Gradient Descent with Warm Restarts"*, arXiv:[1608.03983](https://arxiv.org/abs/1608.03983) (cosine annealing 스케줄) 및 Goyal et al., *"Accurate, Large Minibatch SGD"*, arXiv:[1706.02677](https://arxiv.org/abs/1706.02677) (학습 초반 linear warmup으로 불안정성 완화)의 조합을 `CosineWarmupScheduler` 클래스로 직접 구현했습니다. ReduceLROnPlateau는 loss가 정체될 때만 반응하는 반응형(reactive) 방식인 반면, cosine 스케줄은 처음부터 감소 궤적이 정해져 있어 MixUp/CutMix로 인해 매 epoch 손실 변동이 큰 AFTER 학습에 더 안정적으로 맞았습니다.
+- **Label Smoothing** — Müller, Kornblith & Hinton, *"When Does Label Smoothing Help?"*, arXiv:[1906.02629](https://arxiv.org/abs/1906.02629). 정답 라벨을 `(1-ε) + ε/(K-1)`로 스무딩하여 모델이 과신(over-confidence)하지 않도록 유도합니다. BEFORE 학습 곡선에서 train_acc가 99%+로 수렴하는 반면 val_acc는 훨씬 낮은 지점에서 정체되는 현상(과적합)을 억제하기 위해 도입했으며, EASY=0.05, MID/HARD=0.10으로 난이도가 높을수록 더 강하게 적용했습니다.
+- **클래스 가중치** — Cui et al., *"Class-Balanced Loss Based on Effective Number of Samples"*, arXiv:[1901.05555](https://arxiv.org/abs/1901.05555)의 문제의식(클래스별 유효 샘플 수가 다르면 단순 손실 합산이 다수 클래스에 편향된다는 지적)을 참고하되, 본 프로젝트는 구현 단순성을 위해 학습 세트 클래스별 역빈도(inverse frequency) 가중치를 `compute_class_weights`로 직접 산출해 Label Smoothing Loss에 반영했습니다.
+- **Gradient Clipping** — Pascanu, Mikolov & Bengio, *"On the difficulty of training recurrent neural networks"*, arXiv:[1211.5063](https://arxiv.org/abs/1211.5063)에서 제안된 기법을 차용했습니다. 특히 MixUp/CutMix를 확률적으로 병행 적용하는 MID·HARD에서는 배치마다 손실의 스케일 변동이 커질 수 있어, 그래디언트 노름을 1.0으로 제한해 발산을 방지했습니다.
+- **TTA (Test-Time Augmentation)** — Shanmugam et al., *"When and Why Test-Time Augmentation Works"* / *"Better Aggregation in Test-Time Augmentation"*, arXiv:[2011.11156](https://arxiv.org/abs/2011.11156). 이 연구는 TTA가 항상 이득이 아니라 일부 정답을 오답으로 바꾸기도 한다는 점을 실증적으로 보이며 신중한 aggregation을 강조합니다. 이에 따라 본 프로젝트는 과도한 변환 조합 대신 원본/수평 플립/리사이즈-크롭 **3가지 변환의 단순 평균**만 사용해 리스크를 제한했습니다.
 
-```python
-def _get_last_conv(model, not_type):
-    backbone = BACKBONE_MAP.get(not_type, 'resnet18')
-    if backbone == 'resnet18':
-        return model.layer4[-1].conv2
-    else:  # EfficientNet-B0 (timm)
-        return model.conv_head
-```
+### 4.2 EASY 전략 — "정규화 완화"
+
+**진단(BEFORE)**: EASY는 BEFORE 단계에서 이미 Accuracy 0.9401로 세 난이도 중 가장 높았습니다. `EASY_GRAD.png`(클래스별 평균 Grad-CAM)에서 cat/dog 모두 피사체 중심에 활성화가 정확히 집중되어 있어, 모델이 "무엇을 봐야 하는지"는 이미 잘 학습된 상태였습니다. 그러나 학습 곡선(`BEFORE_CURVE.png`)을 보면 **불과 9 epoch만에 val loss 최적점을 찍은 뒤 이후 15 epoch 동안 개선 없이 정체**했고, train_acc는 0.9964까지 치솟은 반면 val_acc는 0.9523에 머물러 과적합 격차(gap)가 발생했습니다.
+
+**전략**: 아키텍처는 ResNet18을 유지하되(문제가 표현력 부족이 아니었으므로),
+- `Dropout` 0.5 → 0.3으로 완화
+- `RandomGrayscale(p=0.05)`의 약한 색상 불변성 증강만 추가
+- `RandomErasing`도 p=0.15로 가장 약하게 적용
+- TTA 적용
+
+**근거**: 데이터가 이미 쉬운 상황에서 과도한 정규화(무거운 Dropout, 강한 증강)는 오히려 불필요한 언더피팅과 학습 속도 저하를 유발한다는 것이 이 전략의 핵심 논리입니다. 실제로 AFTER 학습 곡선에서 EASY는 85 epoch까지 완만하게 학습되며 val_acc가 0.9549(best epoch)까지 점진적으로 개선되었고, train_acc(0.9858)와 val_acc(0.9530)의 최종 격차(3.3%p)도 BEFORE(4.4%p, 24 epoch 만에 조기 수렴)보다 완만한 형태를 보였습니다.
+
+**결과**: Accuracy 0.9401 → 0.9583 (TTA, **+1.82%p**), F1-macro 0.8921 → 0.9217 (**+2.96%p**) — 세 난이도 중 개선폭은 가장 작았으나, 이는 애초에 성능 상한에 근접해 있었다는 진단과 일치하는 결과입니다.
+
+### 4.3 MID 전략 — "배경 혼동에 대한 증강 강화"
+
+**진단(BEFORE)**: `MID_정량적평가.png` confusion matrix에서 cat precision 0.7959, recall 0.7840으로 세 클래스 중 가장 취약했습니다. `MID_오답샘플1.png`를 보면 오답의 상당수가 **자연 배경(풀숲, 덤불 등)에 피사체가 일부 섞여 있는 케이스**였고, 해당 샘플들의 Grad-CAM 히트맵이 피사체 윤곽을 넘어 배경 텍스처로 새어나가는 모습이 관찰되었습니다. 즉, 표현력 부족보다는 **배경-전경 색상/질감 유사성으로 인한 혼동**이 주된 실패 원인으로 진단되었습니다.
+
+**전략**: 아키텍처는 ResNet18을 유지(중간 난이도이므로 표현력보다 정규화·증강이 더 중요하다고 판단)하되,
+- `RandAugment(num_ops=2, magnitude=9)` 도입
+- `RandomErasing(p=0.25)`로 강화
+- `MixUp(alpha=0.4)` 적용
+- 클래스 가중치 적용
+
+**근거**:
+- **RandAugment** — Cubuk et al., arXiv:[1909.13719](https://arxiv.org/abs/1909.13719). 이 논문은 별도의 augmentation policy 탐색 없이도 무작위로 조합된 변환만으로 최신 자동 탐색 기법과 대등하거나 더 나은 일반화 성능을 낼 수 있음을 ImageNet 등에서 실증했습니다. "배경과 전경이 혼재"된 MID 데이터 특성상, 다양한 색상·기하 변환 조합을 무작위로 경험시키는 것이 특정 배경 패턴에 대한 과도한 의존을 줄이는 데 유리하다고 판단했습니다.
+- **RandomErasing** — Zhong et al., arXiv:[1708.04896](https://arxiv.org/abs/1708.04896). 학습 이미지의 임의 사각 영역을 지워 다양한 가림 수준을 인위적으로 생성함으로써, 모델이 이미지의 특정 부분(예: 배경과 인접한 영역)에만 의존하지 않고 더 강건해지도록 유도한다고 설명합니다. MID의 위장/배경 혼입 패턴에 대한 강건성 확보를 위해 BEFORE 대비 강도(p=0.15→0.25)를 높였습니다.
+- **MixUp** — Zhang et al., *"mixup: Beyond Empirical Risk Minimization"*, arXiv:[1710.09412](https://arxiv.org/abs/1710.09412). 두 이미지와 라벨을 선형 결합(`λx₁+(1-λ)x₂`)하여 학습시킴으로써 클래스 간 결정 경계를 더 매끄럽게(smoother) 만들어, 다양한 배경 조합에 대한 일반화력을 높인다고 제안합니다.
+
+**결과**: Accuracy 0.8868 → 0.9111 (TTA, **+2.43%p**), F1-macro 0.8570 → 0.8916 (**+3.46%p**). 특히 cat recall이 0.7840(BEFORE) → 0.8500(AFTER, TTA)까지 개선되어, 배경 혼동으로 인한 실패를 겨냥한 전략이 실제로 해당 클래스의 재현율 개선으로 이어졌음을 확인했습니다.
+
+### 4.4 HARD 전략 — "백본 교체 + 최대 강도 정규화"
+
+**진단(BEFORE)**: HARD는 BEFORE 단계에서 Accuracy 0.8298로 세 난이도 중 가장 낮았고, 학습 곡선(`BEFORE_CURVE.png`)에서 **val loss가 7 epoch 이후 오히려 증가**하는 뚜렷한 과적합 패턴을 보였습니다(train_acc 0.9890 vs val_acc 0.8483, gap 14.1%p — 세 난이도 중 최대). `HARD_오답샘플1.png`에서는 극단적 클로즈업·저조도·흐림으로 피사체 정보 자체가 제한적이었고, Grad-CAM이 피사체가 아닌 배경 질감·그림자 패턴에 집중되는 오귀인이 다수 관찰되었습니다. 즉 HARD는 **① 얕은 ResNet18의 표현력 한계**와 **② 심각한 과적합**이라는 이중 문제를 겪고 있다고 진단했습니다.
+
+**전략**: 이중 문제에 대응하기 위해 가장 많은 기법을 동시에 적용했습니다.
+- 백본을 **ResNet18 → EfficientNet-B0**(timm, ImageNet pretrained)로 교체
+- `RandAugment(num_ops=2, magnitude=12)` — 세 난이도 중 최대 강도
+- `RandomVerticalFlip(p=0.1)` 추가
+- `RandomErasing(p=0.35, scale=(0.02,0.25))` — 최대 강도
+- **MixUp + CutMix 병행**(배치마다 50% 확률로 둘 중 하나 적용)
+- Label Smoothing 0.10, 클래스 가중치, Gradient Clipping 1.0
+- lr을 EASY/MID(1e-4) 대비 절반인 5e-5로 낮추고, patience를 20으로 늘려 더 완만하고 안정적인 수렴 유도
+
+**근거**:
+- **EfficientNet-B0** — Tan & Le, *"EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks"*, arXiv:[1905.11946](https://arxiv.org/abs/1905.11946). Depth·Width·Resolution을 compound scaling으로 균형 있게 확장하여, ResNet 계열 대비 적은 파라미터로도 더 높은 표현력을 달성한다고 제안합니다. 저품질·저정보 이미지가 많은 HARD에서는 더 정교한 특징 추출기가 필요하다고 판단해 채택했습니다. 반대로 EASY·MID는 이미 충분한 정보량 대비 ResNet18로 충분하다고 판단해 교체하지 않았는데, 이는 "무조건 큰 모델이 낫다"가 아니라 **정보 병목의 위치에 따라 처방을 달리해야 한다**는 이 프로젝트의 핵심 가설과 일치하는 설계입니다.
+- **CutMix** — Yun et al., arXiv:[1905.04899](https://arxiv.org/abs/1905.04899). 이미지의 일부 영역을 다른 이미지의 패치로 대체하고 라벨도 면적 비율로 혼합하는 기법으로, 이미지 전체를 흐리게 섞는 MixUp과 달리 원본 픽셀 정보를 그대로 보존하면서도 국소적 특징에 대한 과도한 의존을 줄여 객체의 일부만 보여도 판별 가능하도록 유도한다고 설명합니다. 피사체 일부만 보이는 경우가 많은 HARD 데이터 특성과 부합한다고 판단해 MixUp과 병행 채택했습니다.
+- **클래스 가중치(재확인)** — Cui et al., arXiv:[1901.05555](https://arxiv.org/abs/1901.05555)의 문제의식을 HARD에도 동일하게 적용: not-hard(2,200)가 cat/dog(각 1,000) 대비 많은 불균형 구조에 대응.
+- **Gradient Clipping(재확인)** — Pascanu et al., arXiv:[1211.5063](https://arxiv.org/abs/1211.5063). CutMix+MixUp을 확률적으로 병행하면 배치 간 손실 스케일 변동이 가장 크게 나타나는 난이도가 HARD였기에, 그래디언트 폭주 방지가 특히 중요했습니다.
+
+**결과**: Accuracy 0.8298 → 0.8817 (TTA, **+5.19%p, 세 난이도 중 최대 개선폭**), F1-macro 0.8124 → 0.8705 (**+5.81%p**). cat recall도 0.7240(BEFORE) → 0.8210(AFTER, TTA)까지 개선되었습니다. 이는 "난이도가 높을수록 더 정교하고 강한 전략이 필요하며, 그 효과도 크다"는 프로젝트의 핵심 가설을 가장 직접적으로 뒷받침하는 결과입니다.
+
+### 4.5 XAI 5종 기법 구현 노트 (BEFORE·AFTER 공통, 진단에 사용)
+
+| 기법 | 논문 | 특징 및 채택 이유 |
+|---|---|---|
+| **Grad-CAM** | Selvaraju et al., arXiv:[1610.02391](https://arxiv.org/abs/1610.02391) | 마지막 conv층 gradient를 전역 평균해 채널별 가중치 산출 후 activation과 가중합. 계산이 빠르고 안정적이어서 1차 스크리닝 용도로 사용 |
+| **Grad-CAM++** | Chattopadhyay et al., arXiv:[1710.11063](https://arxiv.org/abs/1710.11063) | 픽셀별 고차 미분(2·3차)으로 산출한 alpha 가중치를 사용, 다중 객체·세밀한 국소 영역 포착에 강점 |
+| **Score-CAM** | Wang et al., arXiv:[1910.01279](https://arxiv.org/abs/1910.01279) | gradient에 의존하지 않고 각 채널의 activation map으로 원본을 마스킹한 뒤 실제 softmax 점수 변화로 가중치 산출 → gradient saturation 문제에서 자유롭고 노이즈에 강건 |
+| **Occlusion Sensitivity** | Zeiler & Fergus, arXiv:[1311.2901](https://arxiv.org/abs/1311.2901) | 슬라이딩 윈도우로 이미지 일부를 가리며 예측 확률 변화를 직접 관찰하는, 가장 모델-비의존적(model-agnostic)에 가까운 방식 |
+| **LIME** | Ribeiro et al., arXiv:[1602.04938](https://arxiv.org/abs/1602.04938) | 슈퍼픽셀 단위로 이미지를 분할하고 국소적으로 선형 대리모델(surrogate model)을 학습해 중요 영역 도출 — 모델 구조에 완전히 독립적 |
+
+5개 기법 각각의 노이즈를 상호 보완하기 위해 **Grad-CAM 30% + Grad-CAM++ 35% + Score-CAM 35%** 가중 평균 앙상블 CAM(`visualize_ensemble_cam`)도 함께 제공합니다.
 
 ---
 
 ## 5. 기술 스택
 
-| 분류 | 기술 |
-|---|---|
-| **언어 / 실행 환경** | Python 3, Google Colab (GPU 런타임) |
-| **딥러닝 프레임워크** | PyTorch, torchvision |
-| **사전학습 백본** | `timm` (ResNet18, EfficientNet-B0) |
-| **XAI / 해석가능성** | Grad-CAM / Grad-CAM++ / Score-CAM (자체 구현), `lime`, `scikit-image`(슈퍼픽셀) |
-| **평가·지표** | `scikit-learn` (classification_report, confusion_matrix, f1_score, accuracy_score) |
-| **시각화** | `matplotlib`, `seaborn`, `opencv-python-headless` |
-| **데이터 처리** | `numpy`, `Pillow(PIL)` |
-| **개발/실행 관리** | Jupyter Notebook(`.ipynb`), Google Drive (모델·데이터셋 영속화) |
+### Core (모델 · 학습)
+
+![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)
+![Torchvision](https://img.shields.io/badge/Torchvision-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)
+![timm](https://img.shields.io/badge/timm%20(PyTorch%20Image%20Models)-EE4C2C?style=for-the-badge&logoColor=white)
+![scikit-learn](https://img.shields.io/badge/scikit--learn-F7931E?style=for-the-badge&logo=scikitlearn&logoColor=white)
+
+### XAI & 해석가능성
+
+![LIME](https://img.shields.io/badge/LIME-4B8BBE?style=for-the-badge&logoColor=white)
+![Grad-CAM family](https://img.shields.io/badge/Grad--CAM%20%2F%20Grad--CAM%2B%2B%20%2F%20Score--CAM-654FF0?style=for-the-badge&logoColor=white)
+![scikit-image](https://img.shields.io/badge/scikit--image-F7931E?style=for-the-badge&logoColor=white)
+![OpenCV](https://img.shields.io/badge/OpenCV-5C3EE8?style=for-the-badge&logo=opencv&logoColor=white)
+
+### 데이터 처리 & 시각화
+
+![NumPy](https://img.shields.io/badge/NumPy-013243?style=for-the-badge&logo=numpy&logoColor=white)
+![Matplotlib](https://img.shields.io/badge/Matplotlib-11557C?style=for-the-badge&logoColor=white)
+![Seaborn](https://img.shields.io/badge/Seaborn-4C72B0?style=for-the-badge&logoColor=white)
+![Pillow](https://img.shields.io/badge/Pillow-3776AB?style=for-the-badge&logoColor=white)
+
+### 실행 환경 & 인프라
+
+![Python](https://img.shields.io/badge/Python%203-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Google Colab](https://img.shields.io/badge/Google%20Colab-F9AB00?style=for-the-badge&logo=googlecolab&logoColor=white)
+![Google Drive](https://img.shields.io/badge/Google%20Drive-4285F4?style=for-the-badge&logo=googledrive&logoColor=white)
+![NanumGothic](https://img.shields.io/badge/NanumGothic%20Font-2E7D32?style=for-the-badge&logoColor=white)
 
 ---
 
 ## 6. 설치 및 실행 방법
 
-### 6-1. Google Colab에서 실행 (권장)
-본 프로젝트는 Google Colab + Google Drive 마운트 기준으로 작성되었습니다.
+### 6.1 사전 준비물
 
-1. `img_cls_BEFORE.ipynb` 또는 `img_cls_AFTER.ipynb`를 Colab에서 엽니다.
-2. `dataset.zip`(전처리된 easy/mid/hard 데이터셋)을 `MyDrive/CATvsDOGvsNOT/`에 업로드합니다.
-3. 노트북의 **CELL 2 (Google Drive 마운트 및 데이터셋 압축 해제)** 셀을 실행합니다. 최초 실행 시 압축이 자동 해제되고, 이후 실행에서는 마커 파일을 확인해 재해제를 건너뜁니다.
-4. 상단부터 순서대로 셀을 실행합니다. `best_model_*.pth`가 지정된 경로에 이미 존재하면 **재학습 없이 로드**하고, 없으면 자동으로 학습을 시작합니다.
-
-```python
-# CELL 2 핵심 로직 예시
-DRIVE_BASE = "/content/drive/MyDrive/CATvsDOGvsNOT/AFTER"
-ZIP_PATH   = "/content/drive/MyDrive/CATvsDOGvsNOT/dataset.zip"
-# ZIP_PATH를 압축 해제 후 easy/mid/hard 하위 구조를 자동 탐색합니다.
-```
-
-### 6-2. 로컬 환경에서 실행
-Colab 전용 셀(`google.colab.drive`, `!pip install`, 한글 폰트 설치용 `apt-get`)만 아래와 같이 대체하면 로컬에서도 동일하게 동작합니다.
-
-```bash
-# 1) 가상환경 생성 및 활성화
-python -m venv venv
-source venv/bin/activate      # Windows: venv\Scripts\activate
-
-# 2) 의존성 설치
-pip install torch torchvision timm lime scikit-image \
-            opencv-python-headless scikit-learn \
-            matplotlib seaborn numpy pillow jupyter
-
-# 3) 데이터셋 배치 (Drive 마운트 대신 로컬 경로 사용)
-#    ./dataset/{easy,mid,hard}/{train,test}/{cat,dog,not-X}/
-#    ./models/{BEFORE,AFTER}/best_model_{easy,mid,hard}.pth
-
-# 4) 노트북 실행
-jupyter notebook img_cls_AFTER.ipynb
-```
-
-> 로컬 실행 시 노트북 상단의 `DRIVE_BASE`, `ZIP_PATH`, `EXTRACT_PATH` 변수만 로컬 경로로 수정하면 나머지 학습/평가/XAI 파이프라인 코드는 수정 없이 그대로 동작합니다.
-
-### 6-3. 저장된 모델로 바로 XAI 분석만 실행하기
-이미 학습이 끝난 `.pth` 가중치가 있다면(본 리포지토리의 `BEFORE.zip` / `AFTER.zip`), 학습 셀은 자동으로 스킵되고 곧바로 아래 순서로 평가·XAI 분석이 진행됩니다.
+- Google 계정 (Colab + Drive)
+- GPU 런타임 (Colab 무료 T4 이상 권장 — HARD 학습이 최대 100 epoch까지 진행되므로 CPU 런타임은 비권장)
+- Google Drive에 아래 구조로 사전 배치:
 
 ```
-CELL 15 (EASY 분석) → CELL 16 (MID 분석) → CELL 17 (HARD 분석)
-→ CELL 18 (BEFORE/AFTER 성능 비교) → CELL 19 (학습 곡선)
+/content/drive/MyDrive/CATvsDOGvsNOT/
+├── dataset.zip
+├── img_cls_BEFORE.ipynb
+├── img_cls_AFTER.ipynb
+├── BEFORE/     (최초 실행 시 자동 생성됨, 비어 있어도 무방)
+└── AFTER/      (최초 실행 시 자동 생성됨, 비어 있어도 무방)
 ```
+
+### 6.2 실행 순서
+
+1. `img_cls_BEFORE.ipynb`를 Colab으로 열고 **런타임 → 런타임 유형 변경 → GPU** 설정
+2. 셀을 위에서부터 순서대로 실행(`런타임 → 모두 실행`)
+   - CELL 1: `pip install lime scikit-image opencv-python-headless -q`
+   - CELL 1*: 한국어 폰트(NanumGothic) 자동 설치
+   - CELL 2: Google Drive 마운트 및 `dataset.zip` 자동 압축 해제
+   - CELL 6: 난이도별(easy → mid → hard) 베이스라인 학습 — `BEFORE/best_model_{diff}.pth`가 이미 있으면 자동으로 로드만 수행
+   - 이후 셀: XAI 진단 파이프라인 실행
+3. `img_cls_AFTER.ipynb`를 열고 동일하게 실행
+   - CELL 1: `pip install lime scikit-image opencv-python-headless timm -q` (timm 추가)
+   - 나머지는 BEFORE와 동일한 흐름이나, 난이도별 차별화 전략(4장)이 자동 적용됨
+4. 마지막 비교 셀(`results_after` vs `results_before`)에서 BEFORE 대비 AFTER 개선폭 자동 시각화
+
+> **재실행 팁**: 하이퍼파라미터를 바꿔 재학습하고 싶다면 반드시 Drive의 해당 `best_model_{diff}.pth`(및 `_history.json`)를 먼저 삭제해야 합니다. 파일이 존재하면 두 노트북 모두 "저장된 모델 발견 → 재학습 없이 로드"로 분기합니다. (자세한 내용은 [8.6절](#8-주요-트러블슈팅) 참고)
+
+### 6.3 로컬(비-Colab) 환경에서 실행 시 참고사항
+
+- `from google.colab import drive` 및 `drive.mount(...)` 부분은 로컬 환경에 없는 API이므로, 로컬 데이터 경로로 직접 대체해야 합니다.
+- 한국어 폰트 설치 셀은 Ubuntu 기반(Colab)의 `apt-get install fonts-nanum`을 가정하므로, 다른 OS에서는 해당 OS의 나눔고딕 설치 방법으로 대체해야 합니다.
+- GPU가 없는 환경에서는 `device = torch.device("cuda" if torch.cuda.is_available() else "cpu")`에 의해 자동으로 CPU로 폴백되지만, HARD 모델(EfficientNet-B0 + MixUp/CutMix, 최대 100 epoch)의 학습 시간이 매우 길어질 수 있습니다.
 
 ---
 
 ## 7. 폴더 구조
 
 ```
-CAT-DOG-NOT-Classification/
+CATvsDOGvsNOT/
+├── dataset.zip                        # easy/mid/hard 하위에 train/test/{cat,dog,not-*} 구조
+├── img_cls_BEFORE.ipynb               # 베이스라인 학습 + XAI 진단 노트북
+├── img_cls_AFTER.ipynb                # 난이도별 개선 전략 학습 + 재진단 노트북
 │
-├── notebooks/
-│   ├── img_cls_BEFORE.ipynb        # 베이스라인 학습·평가·XAI 분석
-│   └── img_cls_AFTER.ipynb         # 개선 모델 학습·평가·XAI 분석
+├── BEFORE/                            # 베이스라인 모델 산출물 (Drive에 영속 저장)
+│   ├── best_model_easy.pth
+│   ├── best_model_easy_history.json   # {train_loss, val_loss, train_acc, val_acc}
+│   ├── best_model_mid.pth
+│   ├── best_model_mid_history.json
+│   ├── best_model_hard.pth
+│   └── best_model_hard_history.json
 │
-├── models/
-│   ├── BEFORE/
-│   │   ├── best_model_easy.pth
-│   │   ├── best_model_easy_history.json
-│   │   ├── best_model_mid.pth
-│   │   ├── best_model_mid_history.json
-│   │   ├── best_model_hard.pth
-│   │   └── best_model_hard_history.json
-│   └── AFTER/
-│       ├── best_model_easy.pth
-│       ├── best_model_easy_history.json
-│       ├── best_model_mid.pth
-│       ├── best_model_mid_history.json
-│       ├── best_model_hard.pth
-│       └── best_model_hard_history.json
-│
-├── dataset/                        # 미포함 (용량 이슈로 dataset.zip 별도 관리)
-│   ├── easy/{train,test}/{cat,dog,not-easy}/
-│   ├── mid/{train,test}/{cat,dog,not-mid}/
-│   └── hard/{train,test}/{cat,dog,not-hard}/
-│
-├── docs/
-│   └── 프로젝트_보고서.pdf          # 초기 버전 프로젝트 보고서 (본 README의 확장판 기준 자료)
-│
-└── README.md
+└── AFTER/                             # 개선 모델 산출물
+    ├── best_model_easy.pth            # ResNet18 (dropout 0.3)
+    ├── best_model_easy_history.json   # {..., lr}  ← AFTER는 lr 히스토리 추가 기록
+    ├── best_model_mid.pth             # ResNet18 (dropout 0.4)
+    ├── best_model_mid_history.json
+    ├── best_model_hard.pth            # EfficientNet-B0 (timm)
+    └── best_model_hard_history.json
 ```
 
-> `models/BEFORE`, `models/AFTER`는 각각 첨부된 `BEFORE.zip`, `AFTER.zip`의 내용과 대응됩니다. `_history.json`에는 epoch별 train/val loss·accuracy(및 AFTER는 learning rate)가 기록되어 있어 재학습 없이 학습 곡선을 재현할 수 있습니다.
+> 아래 `assets/` (또는 `docs/images/`)는 본 저장소의 일부는 아니지만, [10장](#10-결과-및-그래프)에서 참조하는 결과 이미지들을 GitHub README에 실제로 삽입하려면 별도로 리포지토리에 추가하는 것을 권장합니다.
+
+```
+assets/
+├── before/   # BEFORE_BASE.png, BEFORE_CURVE.png, BEFORE_VAL.png, {EASY,MID,HARD}_*.png ...
+└── after/    # AFTER_BASE.png, AFTER_CURVE.png, AFTER_VAL.png, AFTER_LR.png, {EASY,MID,HARD}_*.png ...
+```
 
 ---
 
 ## 8. 주요 트러블슈팅
 
-프로젝트를 진행하며 마주친 문제들을 AI 엔지니어 관점에서 원인 분석 → 해결 순서로 정리했습니다.
+BEFORE에서 AFTER로 개선해 나가는 과정에서 실제로 마주쳤을 가능성이 높은 문제들을, 노트북에 남아있는 수정 이력과 코드 구조를 근거로 단계적으로 정리했습니다.
 
-### 8-1. 클래스 불균형으로 인한 `cat` 클래스 recall 저하
-- **문제 상황**: `cat`/`dog`는 각 1,000장 내외인 반면 `NOT` 클래스는 이보다 최대 5배 많아, 모델이 다수 클래스(`NOT`)로 예측을 편향하는 경향이 나타났습니다. 특히 `cat`이 `NOT` 클래스로 잘못 분류되는 비율이 세 난이도 모두에서 가장 두드러진 오류 패턴이었습니다.
-- **원인 분석**: 단순 `CrossEntropyLoss`는 클래스별 표본 수 차이를 전혀 반영하지 않아, 그래디언트가 자연스럽게 다수 클래스 쪽으로 편향됩니다.
-- **해결**: 학습 세트 클래스 분포로부터 역비율 가중치를 자동 계산(`compute_class_weights`)하여 `LabelSmoothingCrossEntropy`에 결합, 소수 클래스 오분류에 더 큰 페널티를 부여했습니다. 동시에 MixUp/CutMix로 결정 경계 자체를 완만하게 만들어 소수 클래스 주변 과적합도 함께 완화했습니다.
+### 8.1 `cam_to_overlay` 반환 타입 버그 — 히트맵이 새까맣게 보이는 문제
 
-### 8-2. Grad-CAM 오버레이 이미지가 완전히 검게 나오는 시각화 버그
-- **문제 상황**: Grad-CAM 히트맵을 원본 이미지 위에 오버레이했을 때, 특정 실행 환경에서 결과 이미지가 대부분 검은색으로만 렌더링되는 현상이 발생했습니다.
-- **원인 분석**: `cam_to_overlay` 함수가 `uint8` 타입([0, 255])의 배열을 반환한 뒤, 후속 코드에서 `np.clip(img, 0, 1)`을 적용하는 구조였습니다. `matplotlib.imshow`는 `uint8` 배열을 [0, 255] 스케일로 해석하는데, 이미 0~1로 클리핑된 값은 대부분 0 또는 1 근처로 뭉개져 사실상 전부 검은 픽셀로 보이게 된 것입니다. 즉 **반환 타입(uint8)과 후처리 로직(0~1 클리핑)의 스케일 불일치**가 원인이었습니다.
-- **해결**: `cam_to_overlay`의 반환 타입을 `float32`, [0, 1] 스케일로 통일하도록 수정했습니다. 이 수정은 클래스별 평균 활성화 맵(`visualize_mean_cam`)에도 동일하게 적용했으며, 기존에는 원본 이미지 없이 순수 히트맵만 표시되던 것을 **원본 이미지 위 오버레이 방식**으로 함께 개선하여 시각적 해석력을 높였습니다.
+**증상**: CAM 오버레이 이미지를 `plt.imshow`로 그렸을 때 전체가 검게만 보임.
+**원인**: `cam_to_overlay` 함수가 `uint8`([0,255]) 배열을 반환했는데, 호출부에서 `np.clip(img, 0, 1)`을 적용하면서 [0,1] 범위 밖의 모든 값이 손실되어 `imshow`가 이를 `float`로 잘못 해석. `uint8` 픽셀값(예: 128)이 `float` 컬러맵 기준([0,1])에서는 1.0을 초과해 잘려나가면서 대부분 픽셀이 검정으로 렌더링됨.
+**해결**: `cam_to_overlay`가 항상 `(overlay / 255.0).astype(np.float32)`로 **float32 [0,1] 범위**를 반환하도록 수정. (BEFORE 노트북 CELL 0 마크다운의 "수정 사항"에 명시된 실제 변경 이력)
 
-### 8-3. 다중 XAI 기법 동시 적용 시 Forward/Backward Hook 충돌
-- **문제 상황**: Grad-CAM, Grad-CAM++, Score-CAM을 한 파이프라인에서 순차적으로 호출하자, 한 기법의 hook이 남긴 activation/gradient가 다른 기법의 계산에 영향을 주는 간섭이 발생할 위험이 있었습니다. 세 기법 모두 동일한 `layer4[-1].conv2`(또는 `conv_head`)에 hook을 등록하기 때문입니다.
-- **원인 분석**: 하나의 모델 인스턴스에 여러 `register_forward_hook`/`register_full_backward_hook`을 중첩 등록하면, 각 클래스가 참조하는 `self._activations`/`self._gradients`가 마지막 호출 결과로 서로 덮어써질 수 있습니다.
-- **해결**: `run_xai_pipeline` 내부에서 기법별로 **독립적인 모델 인스턴스**(`model_gc`, `model_gcpp`, `model_sc`)를 각각 `load_model`로 새로 로드하여 hook을 분리했습니다. 동일 가중치를 공유하지만 서로 다른 파이썬 객체이므로 hook 간 간섭 없이 동시 비교 시각화가 가능해졌습니다. 메모리 사용량이 늘어나는 트레이드오프가 있었지만, 분석 정확성을 우선했습니다.
+### 8.2 `visualize_mean_cam`의 정보 손실 — 순수 히트맵만으로는 해석 불가
 
-### 8-4. HARD 모델의 검증 손실 불안정 → 백본 교체 시 XAI 호환성 문제
-- **문제 상황**: 베이스라인(BEFORE) HARD 모델은 학습 후반부(10 epoch 이후)로 갈수록 검증 손실이 들쭉날쭉해지며 학습/검증 손실 격차가 벌어지는 **과적합 조짐**을 보였습니다. `cat`/`dog`가 `not-hard`(곰·늑대·호랑이·사자·여우 등)로 오분류되는 비율도 가장 높았습니다.
-- **원인 분석**: ResNet18의 표현력이 `not-hard`처럼 실루엣·질감이 유사한 클래스 간 미세한 차이를 포착하기에 한계가 있었고, 정규화 강도(단일 Dropout, weight_decay 1e-4 수준)도 상대적으로 약해 과적합에 취약했습니다.
-- **해결**: HARD 난이도에 한해 백본을 **EfficientNet-B0(timm)**로 교체하고, RandAugment·RandomErasing·MixUp·CutMix를 모두 적용해 정규화를 강화했습니다. 이 과정에서 ResNet18과 EfficientNet-B0의 **마지막 conv 레이어 경로가 다르다는 새로운 이슈**(`layer4[-1].conv2` vs `conv_head`)가 발견되어, XAI 모듈이 하드코딩된 레이어 참조 대신 `BACKBONE_MAP` 기반으로 레이어를 자동 탐색하도록 `_get_last_conv` 헬퍼를 추가 구현했습니다. 결과적으로 HARD 모델은 Test Accuracy 82.98% → 88.17%로 전 난이도 중 가장 큰 개선폭(+5.19%p)을 기록했습니다.
+**증상**: 클래스별 평균 활성화 맵이 원본 이미지 없이 `jet` 컬러맵 단독으로 표시되어, 활성화가 실제로 이미지의 어느 부분을 가리키는지 알 수 없음.
+**원인**: 초기 구현이 클래스별 평균 CAM을 7×7 activation 해상도 그대로 `imshow(cmap='jet')`로만 시각화.
+**해결**: 클래스별 "첫 번째 정답 샘플"을 대표 이미지로 저장해두었다가, 평균 CAM을 224×224로 업샘플링한 뒤 대표 이미지 위에 오버레이하도록 변경. (`EASY_GRAD.png` 등 결과물이 이 수정을 반영)
+
+### 8.3 백본 교체 후 Grad-CAM 계열 hook이 깨지는 문제 (HARD → EfficientNet-B0)
+
+**증상**: HARD에 EfficientNet-B0를 도입하면서 기존 `GradCAM`/`GradCAM++`/`Score-CAM` 클래스가 `model.layer4[-1].conv2`에 하드코딩되어 있어 `AttributeError: 'EfficientNet' object has no attribute 'layer4'` 발생 가능.
+**원인**: ResNet 계열과 EfficientNet 계열은 마지막 conv 레이어의 속성명이 다름(ResNet: `layer4[-1].conv2`, EfficientNet(timm): `conv_head`).
+**해결**: AFTER 노트북에서 `_get_last_conv(model, not_type)` 헬퍼 함수를 신설해 `BACKBONE_MAP`을 참조, 백본에 따라 올바른 레이어를 반환하도록 분기 처리. 이 덕분에 XAI 파이프라인 코드를 백본에 상관없이 재사용할 수 있게 됨.
+
+### 8.4 timm 사전학습 가중치 다운로드 시 HuggingFace Hub 인증 경고
+
+**증상**: `timm.create_model('tf_efficientnet_b0', pretrained=True, ...)` 최초 호출 시 `Warning: You are sending unauthenticated requests to the HF Hub.` 경고가 학습 로그에 출력됨.
+**원인**: timm 최신 버전은 사전학습 가중치를 HuggingFace Hub에서 받아오는데, 비로그인 상태에서는 요청 속도 제한(rate limit)이 더 엄격하게 적용됨.
+**해결/권장**: 대규모 반복 실험 시에는 `huggingface-cli login` 또는 `HF_TOKEN` 환경 변수 설정을 권장. 본 프로젝트 규모(3개 난이도, 1회성 다운로드)에서는 경고만 발생하고 학습에는 지장이 없었음.
+
+### 8.5 MixUp/CutMix 적용 시 "Train Accuracy가 Val Accuracy보다 낮아 보이는" 착시
+
+**증상**: AFTER의 MID·HARD 학습 곡선(`AFTER_CURVE.png`)에서 Val Accuracy 곡선이 Train Accuracy 곡선보다 계속 **위에** 그려지는, 일반적인 직관과 반대되는 현상이 관찰됨.
+**원인 분석(코드 근거)**: `train_after` 함수에서 MixUp/CutMix가 적용된 배치는 `outputs = model(mixed)`로 혼합된 이미지에 대한 예측을 산출하지만, 정확도 집계는 `tr_correct += (preds == labels).sum()`으로 **원본(비혼합) 라벨** 기준으로 계산됩니다. 즉 이미지 절반이 다른 클래스와 섞인 상태에서 원래 라벨과 일치하는지를 채점하기 때문에, train_acc는 실제 모델의 표현 학습 진행도보다 **체계적으로 낮게 측정**됩니다. 반면 val_acc는 순수 원본 이미지에 대한 정확한 측정치입니다.
+**결론**: 이는 버그가 아니라 MixUp/CutMix 사용 시 널리 알려진 지표 해석상의 함정입니다. 학습 진행도를 판단할 때는 train_acc보다 **train_loss의 하강 추세**나 val_acc를 기준으로 삼는 것이 더 정확합니다.
+
+### 8.6 저장된 `.pth` 재사용 로직으로 인한 "하이퍼파라미터 변경이 반영되지 않는" 함정
+
+**증상**: `TRAIN_CONFIG`의 학습률·label smoothing 값 등을 바꾸고 셀을 재실행해도 학습 로그가 전혀 출력되지 않고 곧바로 "저장된 모델 발견. 재학습 없이 로드합니다."만 출력됨.
+**원인**: `train_after`/`train_baseline` 모두 `if os.path.exists(save_path): return load_model(...)` 형태로, Drive에 동일 경로의 `.pth`가 이미 존재하면 무조건 재학습을 건너뛰도록 설계됨(세션 재개·시간 절약 목적).
+**해결**: 하이퍼파라미터를 바꿔 실험하려면 Drive에서 해당 `best_model_{diff}.pth`와 `best_model_{diff}_history.json`을 **먼저 수동으로 삭제**한 뒤 재실행해야 함.
+
+### 8.7 Cosine 스케줄러 도입 후 Early Stopping 타이밍 변화
+
+**증상**: BEFORE는 22~24 epoch 내 조기 종료되는 반면, AFTER는 63~100 epoch까지 학습이 지속됨(HARD는 patience=20 소진까지 100 epoch 풀로 진행).
+**원인**: `ReduceLROnPlateau`는 val loss가 실제로 정체될 때 학습률을 낮춰 조기에 국소 최적점에 도달하는 경향이 있는 반면, `CosineWarmupScheduler`는 val loss와 무관하게 미리 정해진 궤적으로 학습률을 서서히 낮추기 때문에, val loss가 다소 진동(noisy plateau)하더라도 patience 카운터가 소진될 때까지 학습이 계속됨. `AFTER_VAL.png`에서 HARD의 val loss가 하락 후 좁은 범위에서 진동하는 패턴이 이를 뒷받침함.
+**대응**: patience를 EASY/MID(15) 대비 HARD(20)로 더 여유 있게 설정하여, cosine 스케줄 특성상 발생하는 노이즈로 인한 조기 종료를 방지.
+
+### 8.8 GPU 메모리/세션 제한 — Colab 무료 티어에서 HARD 학습 시간 초과 우려
+
+**증상**: EfficientNet-B0 + MixUp/CutMix 조합으로 HARD 학습이 최대 100 epoch까지 진행되면서, Colab 무료 티어의 세션 제한 시간에 근접할 위험.
+**대응**: [8.6절]에서 설명한 체크포인트 재사용 로직 덕분에, 세션이 끊기더라도 마지막으로 저장된 `best_model_hard.pth` 시점부터 손실 없이 이어갈 수 있는 구조(단, 이어서 학습을 계속하려는 것이 아니라 "로드 후 재사용"만 지원되므로, 학습 중간에 세션이 끊기면 해당 실행의 학습 자체는 처음부터 다시 시작해야 함에 유의).
 
 ---
 
 ## 9. 결과 해석
 
-### 9-1. 정량 평가 종합 비교
+### 9.1 종합 성능 비교
 
-| 난이도 | 구분 | Backbone | Test Accuracy | F1 (Macro) | F1 (Weighted) |
-|:---:|:---:|:---:|:---:|:---:|:---:|
-| EASY | BEFORE | ResNet18 | 0.9401 | 0.8921 | 0.9400 |
-| EASY | AFTER  | ResNet18 | **0.9583** | **0.9217** | **0.9579** |
-| MID  | BEFORE | ResNet18 | 0.8868 | 0.8570 | 0.8857 |
-| MID  | AFTER  | ResNet18 | **0.9111** | **0.8916** | **0.9113** |
-| HARD | BEFORE | ResNet18 | 0.8298 | 0.8124 | 0.8289 |
-| HARD | AFTER  | EfficientNet-B0 | **0.8817** | **0.8705** | **0.8819** |
+| 난이도 | 지표 | BEFORE | AFTER (표준) | AFTER (TTA) | TTA 개선분 | 최종 개선폭(BEFORE→AFTER TTA) |
+|---|---|---|---|---|---|---|
+| EASY | Accuracy | 0.9401 | 0.9519 | 0.9583 | +0.64%p | **+1.82%p** |
+| EASY | F1-macro | 0.8921 | 0.9087 | 0.9217 | +1.30%p | **+2.96%p** |
+| MID | Accuracy | 0.8868 | 0.9045 | 0.9111 | +0.66%p | **+2.43%p** |
+| MID | F1-macro | 0.8570 | 0.8825 | 0.8916 | +0.91%p | **+3.46%p** |
+| HARD | Accuracy | 0.8298 | 0.8738 | 0.8817 | +0.79%p | **+5.19%p** |
+| HARD | F1-macro | 0.8124 | 0.8618 | 0.8705 | +0.87%p | **+5.81%p** |
 
-### 9-2. 학습 안정성 비교 (Best Validation Accuracy 기준)
+### 9.2 난이도가 높을수록 개선폭이 큰 이유
 
-| 난이도 | BEFORE 총 학습 epoch | BEFORE Best epoch | BEFORE Best Val Acc | AFTER 총 학습 epoch | AFTER Best epoch | AFTER Best Val Acc |
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| EASY | 24 | 24 | 95.23% | 85 | 83 | 95.61% |
-| MID  | 22 | 21 | 90.60% | 63 | 48 | 90.45% |
-| HARD | 22 | 20 | 84.93% | 100 | 94 | **87.93%** |
+세 난이도 모두 AFTER가 BEFORE를 앞섰지만, 개선폭은 EASY(+1.82%p) < MID(+2.43%p) < HARD(+5.19%p) 순으로 뚜렷하게 커졌습니다. 이는 다음 두 가지로 해석할 수 있습니다.
 
-AFTER의 EarlyStopping patience(15~20)가 BEFORE(10)보다 넉넉하게 설정되어 있어, 특히 HARD 모델은 94 epoch까지 안정적으로 학습을 이어가며 성능을 끌어올릴 수 있었습니다. 반면 MID의 경우 AFTER가 더 많은 epoch을 학습했음에도 Best Val Acc가 BEFORE보다 근소하게 낮게 나타났는데, 이는 RandAugment + MixUp의 강한 정규화가 **검증 손실 최소화 시점**과 **테스트 정확도 최대화 시점**을 다소 어긋나게 만든 결과로 해석됩니다. 실제 Test Accuracy는 AFTER가 BEFORE보다 2.43%p 높아, 검증 세트 기준 최적 시점 선택이 테스트 일반화 성능과 반드시 일치하지는 않음을 보여주는 사례입니다.
+1. **여유 공간(headroom)의 차이**: BEFORE 기준 EASY는 이미 0.94의 높은 정확도로 상한에 근접해 있었던 반면, HARD는 0.83으로 개선 여지가 컸습니다.
+2. **문제 진단의 정합성**: HARD에서만 유일하게 백본을 교체(ResNet18→EfficientNet-B0)한 것은 "표현력 부족"이라는 진단에 따른 것이었고, 이 진단이 실제로 가장 큰 개선(+5.19%p)으로 이어졌다는 점에서, **정량·XAI 진단에 기반한 처방이 실제로 유효했다**는 근거가 됩니다.
 
-### 9-3. 정성 평가 — XAI가 밝혀낸 오분류 패턴
-5가지 XAI 기법을 종합한 결과, 공통적으로 다음과 같은 인사이트를 확인했습니다.
+### 9.3 클래스별 관점 — cat이 항상 가장 어려운 클래스였다
 
-1. **`cat` 클래스의 취약성**: 모든 난이도, BEFORE/AFTER 모두에서 `cat`이 가장 낮은 F1-score를 기록했습니다. Grad-CAM 시각화 결과 모델이 고양이 이미지를 판단할 때 이미지 전체 실루엣이 아니라 **일부 국소 영역(귀, 눈 주변 등)에만 집중**하는 경향이 반복적으로 관찰되었고, 이것이 배경이 복잡하거나 유사 동물(`not-hard`)이 등장했을 때 오분류로 이어졌습니다.
-2. **난이도가 높을수록 활성화 영역이 분산**: EASY에서는 Grad-CAM 활성화가 객체 중심에 뚜렷하게 모이는 반면, HARD로 갈수록 활성화 영역이 배경까지 퍼지는 양상이 나타나 클래스 간 시각적 유사도가 실제로 모델의 주의(attention) 패턴에도 영향을 준다는 것을 확인했습니다.
-3. **앙상블 CAM의 효과**: 단일 Grad-CAM만으로는 노이즈가 있는 경우에도, Grad-CAM++·Score-CAM과의 가중 평균 앙상블에서는 더 안정적이고 객체 중심에 정합된 활성화 맵을 얻을 수 있었습니다.
-4. **Score-CAM·Occlusion·LIME의 상호 검증 가치**: 그래디언트 기반 기법(Grad-CAM류)이 보여주는 활성화 영역이 실제로 예측에 인과적으로 기여하는지 Occlusion Sensitivity·Score-CAM으로 교차 검증할 수 있었고, LIME은 슈퍼픽셀 단위로 더 해석하기 쉬운 근거를 제공해 비전공자 대상 설명에도 유용했습니다.
+BEFORE 기준 세 난이도 모두에서 cat 클래스의 recall이 가장 낮았습니다(EASY 0.8150, MID 0.7840, HARD 0.7240 — 난이도가 높을수록 더 낮음). AFTER에서 클래스 가중치와 MixUp/CutMix를 도입한 결과:
 
-### 9-4. 종합 해석
-BEFORE에서 발견된 문제(클래스 불균형, HARD 과적합, cat 오분류 집중)에 **정확히 표적화된 개선**(가중 손실, MixUp/CutMix, 백본 교체, 스케줄러 개선)을 적용한 결과, 세 난이도 모두에서 Accuracy와 F1-score가 유의미하게 상승했습니다. 특히 개선 여지가 가장 컸던 HARD 난이도에서 가장 큰 개선폭을 보였다는 점은, **XAI 기반 오류 진단 → 표적 개선**이라는 본 프로젝트의 방법론이 실제로 유효했음을 보여줍니다.
+- HARD cat recall: 0.7240(BEFORE) → 0.8050(AFTER 표준) → **0.8210(AFTER TTA)**
+- MID cat recall: 0.7840(BEFORE) → 0.8330(AFTER 표준) → **0.8500(AFTER TTA)**
+- EASY cat recall: 0.8150(BEFORE) → 0.8230(AFTER 표준) → **0.8460(AFTER TTA)**
 
----
+세 난이도 모두 cat recall이 가장 크게 개선된 지표 중 하나로, 클래스 가중치 도입이 의도한 방향으로 작동했음을 확인할 수 있습니다. 다만 cat의 precision은 여전히 dog·not 클래스보다 낮은 경향이 있어(예: HARD cat precision 0.7994), cat과 dog 간의 혼동은 완전히 해소되지는 않았습니다.
 
-## 10. 최종 회고 및 성찰
+### 9.4 TTA의 일관된 소폭 기여
 
-- **"정량 지표만으로는 모델을 신뢰할 수 없다"**: Accuracy가 90%를 넘는 모델도 Grad-CAM으로 들여다보면 이미지의 핵심이 아닌 부수적인 패턴에 의존해 우연히 맞춘 경우가 섞여 있었습니다. XAI를 학습 파이프라인에 처음부터 포함시킨 것이 개선 방향을 정확히 잡는 데 가장 크게 기여했습니다.
-- **난이도 설계의 중요성**: `NOT` 클래스를 단일 카테고리로 두지 않고 easy/mid/hard로 세분화한 설계 덕분에, "모델이 정확히 어느 수준의 시각적 유사도부터 무너지는가"를 정량적으로 짚어낼 수 있었습니다. 이는 데이터셋 설계 단계의 의사결정이 이후 모든 분석의 해상도를 좌우한다는 것을 체감한 지점이었습니다.
-- **한 가지 정답은 없다는 것**: 보고서에서 언급되었듯 MID 모델은 파인튜닝을 적용하지 않은 버전이 더 우수한 성능을 보였습니다. 모든 난이도에 동일한 레시피(백본, 파인튜닝 여부, 정규화 강도)를 일괄 적용하는 대신, 난이도별로 다른 전략을 실험하고 검증하는 접근이 실제로 더 나은 결과를 만들었습니다. "모범 답안"을 그대로 적용하기보다 **데이터의 특성에 맞춰 실험적으로 검증하는 태도**가 중요하다는 것을 다시 확인했습니다.
-- **검증 지표와 테스트 지표의 괴리**: MID AFTER 모델 사례처럼, 검증 손실 기준 최적 체크포인트가 테스트 정확도 기준 최적과 항상 일치하지는 않았습니다. 다양한 기준(Loss, Accuracy, F1)을 함께 모니터링하고 최종 산출물 선택 시 다각도로 검토해야 한다는 교훈을 얻었습니다.
-- **엔지니어링 디테일이 분석 신뢰도를 좌우한다**: Grad-CAM 오버레이가 새까맣게 나오던 dtype 버그처럼, 사소해 보이는 시각화 버그가 자칫 "모델이 아무것도 학습하지 못했다"는 잘못된 결론으로 이어질 뻔했습니다. XAI 시각화 코드 자체도 모델 코드만큼 꼼꼼한 검증이 필요하다는 점을 배웠습니다.
+TTA는 세 난이도 모두에서 표준 평가 대비 추가로 +0.64%p ~ +0.79%p의 정확도 개선을 제공했습니다. 개선폭 자체는 크지 않지만 방향이 일관되게 긍정적이었다는 점에서, [4.1절](#41-공통-개선-사항-easy--mid--hard-공통-적용)에서 인용한 Shanmugam et al.의 지적("TTA가 항상 이득은 아니다")과 달리 본 실험에서는 3-view의 보수적인 TTA 구성이 리스크 없이 안정적인 이득을 준 것으로 해석됩니다.
+
+### 9.5 XAI 시각화 관점의 정직한 해석
+
+`{EASY,MID,HARD}_GRAD.png`(클래스별 평균 Grad-CAM)를 BEFORE와 AFTER 사이에서 육안으로 비교했을 때, 세 난이도 모두 활성화가 이미 피사체 중심부에 집중되는 유사한 패턴을 보였으며, AFTER에서 정량적 성능이 개선된 것에 비해 **평균 활성화 맵 자체의 극적인 시각적 변화는 크지 않았습니다.** 이는 이번 개선이 "모델이 보는 위치"보다는 "결정 경계의 안정성·일반화"(정규화, 증강, 클래스 가중치) 쪽에 더 크게 기여했을 가능성을 시사하며, 개별 오답 샘플 단위([`{난이도}_오답샘플_앙상블.png`])에서의 변화를 더 세밀하게 추적하는 것이 향후 과제로 남습니다.
 
 ---
 
-## 11. 향후 발전 계획
+## 10. 결과 및 그래프
 
-1. **Hard Negative Mining 자동화**: 현재는 CIFAR-100 클래스를 수작업으로 easy/mid/hard에 배정했습니다. 임베딩 유사도(CLIP 등) 기반으로 cat/dog와의 시각적 거리를 자동 산출해 난이도를 동적으로 재구성하는 파이프라인을 구축할 계획입니다.
-2. **정량적 XAI 평가 지표 도입**: 현재는 XAI 결과를 정성적으로 해석하고 있습니다. Deletion/Insertion AUC, Pointing Game 등 정량적 XAI 신뢰도 지표를 도입해 "어떤 기법이 실제로 더 신뢰할 만한가"를 수치로 검증하고자 합니다.
-3. **오픈셋 인식(Open-Set Recognition) 확장**: 현재의 `NOT` 클래스는 사전에 정의된 사물로 구성되어 있습니다. 학습 시 전혀 본 적 없는 임의 이미지에 대해서도 "cat/dog가 아님"을 판단할 수 있는 오픈셋/OOD(Out-of-Distribution) 탐지 기법(Energy-based OOD, Mahalanobis distance 등)을 결합할 예정입니다.
-4. **경량화 및 배포**: EfficientNet-B0 기반 HARD 모델을 지식 증류(Knowledge Distillation) 또는 ONNX/TensorRT 변환을 통해 경량화하여, 모바일/엣지 환경에서도 동작하는 데모 애플리케이션(웹 데모 or Streamlit)으로 배포할 계획입니다.
-5. **난이도별 앙상블 모델**: 현재는 난이도별로 독립된 모델을 운용합니다. 세 모델의 예측을 결합하는 게이팅(gating) 또는 앙상블 메커니즘을 도입해 단일 통합 모델의 성능을 실험해볼 예정입니다.
-6. **실험 관리 체계화**: 현재 `.pth` + `history.json` 수동 관리 방식을 MLflow/W&B, DVC 등으로 전환하여 데이터 버전·하이퍼파라미터·실험 결과를 체계적으로 추적하고, CI 기반 자동 재현성 검증 파이프라인을 구축할 계획입니다.
-7. **XAI 기반 능동 학습(Active Learning) 루프**: XAI가 "모델이 엉뚱한 곳을 보고 맞춘" 샘플을 자동으로 플래깅하여, 해당 샘플을 우선적으로 재검토·추가 학습에 반영하는 휴먼-인-더-루프 파이프라인으로 발전시킬 예정입니다.
+> 아래는 실제 이미지 삽입 위치와, 각 위치에 들어갈 CDN 결과 파일명을 정리한 표입니다. 실제 이미지 파일은 저장소의 `assets/before/`, `assets/after/` 등에 배치한 뒤 마크다운 이미지 문법(`![설명](경로)`)으로 교체해 주세요.
+
+### 10.1 학습 안정성 (Learning Curves)
+
+| 설명 | 파일명 |
+|---|---|
+| BEFORE 난이도별 Train/Val Loss·Accuracy 곡선 (2행×3열) | `before/BEFORE_CURVE.png` |
+| AFTER 난이도별 Train/Val Loss·Accuracy 곡선 (2행×3열) | `after/AFTER_CURVE.png` |
+| BEFORE 난이도별 Val Loss/Val Accuracy 중첩 비교 | `before/BEFORE_VAL.png` |
+| AFTER 난이도별 Val Loss/Val Accuracy 중첩 비교 | `after/AFTER_VAL.png` |
+| AFTER Cosine Warmup 학습률 스케줄 (EASY/MID/HARD) | `after/AFTER_LR.png` |
+
+### 10.2 정량적 성능 비교
+
+| 설명 | 파일명 |
+|---|---|
+| BEFORE 난이도별 Accuracy/F1-macro/F1-weighted 바차트 | `before/BEFORE_BASE.png` |
+| BEFORE vs AFTER 난이도별 성능 비교 바차트(델타 포함) | `after/AFTER_BASE.png` |
+| {EASY,MID,HARD} BEFORE Confusion Matrix + Classification Report | `before/{EASY,MID,HARD}_정량적평가.png` |
+| {EASY,MID,HARD} AFTER 표준 평가 Confusion Matrix + Report | `after/{EASY,MID,HARD}_정량적평가.png` |
+| {EASY,MID,HARD} AFTER TTA 평가 Confusion Matrix + Report | `after/{EASY,MID,HARD}_TTA평가.png` |
+
+### 10.3 난이도별 XAI 정성 분석
+
+| 설명 | 파일명 |
+|---|---|
+| {EASY,MID,HARD} 정답 샘플 5종 XAI 비교 (3세트씩) | `{before,after}/{EASY,MID,HARD}_정답샘플{1,2,3}.png` |
+| {EASY,MID,HARD} 오답 샘플 5종 XAI 비교 (3세트씩, 핵심 분석) | `{before,after}/{EASY,MID,HARD}_오답샘플{1,2,3}.png` |
+| {EASY,MID,HARD} 오답 샘플 앙상블 CAM 집중 분석 | `{before,after}/{EASY,MID,HARD}_오답샘플_앙상블.png` |
+| {EASY,MID,HARD} 클래스별 평균 Grad-CAM 활성화 맵 | `{before,after}/{EASY,MID,HARD}_GRAD.png` |
 
 ---
 
-*본 README는 `img_cls_BEFORE.ipynb`, `img_cls_AFTER.ipynb`의 실제 코드와 실행 히스토리(`*_history.json`), 그리고 초기 프로젝트 보고서(`프로젝트_보고서.pdf`)를 기반으로 작성되었습니다.*
+## 11. 최종 회고 및 성찰
+
+### 11.1 가설은 지지되었는가
+
+이 프로젝트의 출발점이었던 가설 — "난이도에 따라 실패 원인이 다르므로 처방도 달라야 한다" — 은 결과로 뒷받침되었습니다. 특히 진단(BEFORE의 과적합·표현력 한계 분석) → 처방(HARD만 백본 교체 + 최대 강도 정규화) → 검증(HARD가 가장 큰 개선폭)으로 이어지는 흐름이 일관되게 나타난 점이 고무적이었습니다.
+
+### 11.2 한계와 자기비판
+
+- **Ablation 부재**: HARD의 개선이 "백본 교체" 때문인지 "증강·정규화 강화" 때문인지를 분리하는 ablation 실험을 수행하지 못했습니다. 현재 결과만으로는 두 요인의 기여도를 정량적으로 나눌 수 없습니다.
+- **XAI의 정량적 근거 부족**: 5가지 XAI 기법을 적용했지만 결과 해석은 대부분 육안 관찰(qualitative)에 의존했습니다. [9.5절](#95-xai-시각화-관점의-정직한-해석)에서 밝혔듯, 평균 활성화 맵의 시각적 변화가 정량적 성능 개선만큼 뚜렷하지 않아, "XAI가 곧 성능 개선을 설명한다"고 과장할 수 없었습니다.
+- **지표 해석의 함정 학습**: MixUp/CutMix 적용 시 train accuracy가 실제 학습 진행도를 과소평가한다는 점([8.5절](#8-주요-트러블슈팅))을 뒤늦게 발견했습니다. 이는 "지표가 이상하게 보인다고 반드시 버그는 아니다"라는 교훈을 주었습니다.
+- **난이도 정의 자체의 사전 큐레이션 의존**: EASY/MID/HARD 구분이 데이터셋 제공 시점에 이미 정해져 있었고, 이 구분이 "정말 난이도를 잘 반영하는가"에 대한 자체 검증(예: 사람이 라벨링한 난이도와의 일치도 등)은 수행하지 못했습니다.
+
+### 11.3 배운 점
+
+- 성능이 낮은 부분에 자원을 집중하는 것이 항상 정답은 아니며, "왜 낮은가"에 대한 진단이 선행되어야 처방의 정합성을 확보할 수 있다는 점을 재확인했습니다.
+- 동일한 코드베이스(XAI 파이프라인, 평가 함수)를 재사용하면서 아키텍처(ResNet18 ↔ EfficientNet)만 바꾸려면, 애초에 레이어 접근 로직을 추상화해두는 설계([8.3절](#8-주요-트러블슈팅))가 유지보수성에 크게 기여한다는 것을 체감했습니다.
+
+---
+
+## 12. 향후 발전 계획
+
+1. **Ablation Study**: HARD에서 (a) 백본만 교체, (b) 증강만 강화, (c) 둘 다 적용의 3가지 조합을 분리 실험하여 각 요인의 순수 기여도를 정량화.
+2. **다른 아키텍처와의 비교**: HARD에 ConvNeXt, Vision Transformer(ViT) 등 최신 백본을 추가로 비교하여 EfficientNet-B0가 최선의 선택이었는지 검증.
+3. **Class-Balanced Loss 정식 도입**: 현재의 단순 역빈도 가중치 대신, Cui et al. (arXiv:1901.05555)이 제안한 "유효 샘플 수(effective number)" 공식 `(1-β)/(1-β^n)`을 직접 구현해 비교.
+4. **XAI 정량 지표 도입**: Insertion/Deletion metric, Pointing Game 등 정량적 XAI 평가 지표를 추가하여, [11.2절](#11-최종-회고-및-성찰)에서 지적한 "육안 관찰 의존" 한계를 보완.
+5. **오답 샘플 재검수**: 특히 HARD의 오답 샘플 중 일부가 실제로 라벨링 오류이거나 지나치게 모호한 이미지인지 사람이 직접 재검수하는 human-in-the-loop 절차 도입.
+6. **경량화 및 배포**: 실제 서비스 적용을 가정해 ONNX 변환, 모바일向 양자화(quantization) 등을 통한 추론 속도·모델 크기 최적화 실험.
+
+---
+
+## 참고 문헌 (arXiv 링크 모음)
+
+| 기법 | 논문 | 링크 |
+|---|---|---|
+| ResNet | Deep Residual Learning for Image Recognition | https://arxiv.org/abs/1512.03385 |
+| EfficientNet | Rethinking Model Scaling for CNNs | https://arxiv.org/abs/1905.11946 |
+| RandAugment | Practical automated data augmentation | https://arxiv.org/abs/1909.13719 |
+| Random Erasing | Random Erasing Data Augmentation | https://arxiv.org/abs/1708.04896 |
+| MixUp | Beyond Empirical Risk Minimization | https://arxiv.org/abs/1710.09412 |
+| CutMix | Regularization Strategy with Localizable Features | https://arxiv.org/abs/1905.04899 |
+| Label Smoothing | When Does Label Smoothing Help? | https://arxiv.org/abs/1906.02629 |
+| Class-Balanced Loss | Based on Effective Number of Samples | https://arxiv.org/abs/1901.05555 |
+| AdamW | Decoupled Weight Decay Regularization | https://arxiv.org/abs/1711.05101 |
+| SGDR | Stochastic Gradient Descent with Warm Restarts | https://arxiv.org/abs/1608.03983 |
+| LR Warmup | Accurate, Large Minibatch SGD | https://arxiv.org/abs/1706.02677 |
+| Gradient Clipping | On the difficulty of training RNNs | https://arxiv.org/abs/1211.5063 |
+| TTA | Better Aggregation in Test-Time Augmentation | https://arxiv.org/abs/2011.11156 |
+| Grad-CAM | Visual Explanations from Deep Networks | https://arxiv.org/abs/1610.02391 |
+| Grad-CAM++ | Generalized Gradient-based Visual Explanations | https://arxiv.org/abs/1710.11063 |
+| Score-CAM | Score-Weighted Visual Explanations | https://arxiv.org/abs/1910.01279 |
+| Occlusion Sensitivity | Visualizing and Understanding CNNs | https://arxiv.org/abs/1311.2901 |
+| LIME | Why Should I Trust You? | https://arxiv.org/abs/1602.04938 |
