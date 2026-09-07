@@ -38,7 +38,7 @@
 |---|---|
 | **BEFORE** | EASY/MID/HARD 공통으로 ResNet18 단일 아키텍처 + 동일한 학습 레시피(Adam, 기본 증강)로 베이스라인 구축 |
 | **진단** | Grad-CAM, Grad-CAM++, Score-CAM, Occlusion Sensitivity, LIME 5종 XAI + Confusion Matrix/F1로 난이도별 실패 원인 분석 |
-| **AFTER** | 진단 결과에 근거해 EASY(정규화 완화) / MID(증강 강화) / HARD(백본 교체 + 최다 정규화 기법)로 차별화된 전략 적용 |
+| **AFTER** | 진단 결과에 근거해 EASY (정규화 완화) / MID (증강 강화) / HARD (백본 교체 + 최다 정규화 기법)로 차별화된 전략 적용 |
 | **검증** | 동일한 XAI·정량 평가 파이프라인으로 BEFORE 대비 개선폭을 난이도별로 재측정 |
 
 ### 1.3 핵심 결과 미리보기
