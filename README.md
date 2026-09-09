@@ -76,7 +76,7 @@
 
 ### 3.1 데이터 출처 및 구조
 
-데이터는 Google Drive의 `CATvsDOGvsNOT/dataset.zip`으로 제공되며, Colab에서 압축 해제 시 다음 구조를 가정하고 `find_dataset_root` 함수가 자동으로 루트 경로를 탐색합니다.
+데이터는 **Kaggle의 CIFAR-10에서 CAT과 DOG 클래스에 해당하는 이미지를, CIFAR-100에서 NOT 클래스에 해당하는 이미지를 수집하여 구성**하였습니다. 구성된 데이터셋을 Google Drive에 `CATvsDOGvsNOT/dataset.zip`으로 저장하였으며, Colab 환경에서 압축 해제 후 `find_dataset_root` 함수를 통해 데이터셋의 실제 루트 경로를 자동으로 탐색하도록 구성하였습니다.
 
 ```
 dataset/
