@@ -84,7 +84,7 @@ dataset/
   mid/    → train/ test/  → cat/ dog/ not-mid/
   hard/   → train/ test/  → cat/ dog/ not-hard/
 ```
-
+📌
 ### 3.2 난이도별 데이터 규모 및 클래스 불균형
 
 테스트셋 Confusion Matrix의 support(정답 개수 총합) 기준으로 집계한 난이도별 클래스 분포는 다음과 같습니다.
